@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Finvestimento — Controle de Investimentos</title>
+  <link rel="stylesheet" href="assets/styles.css" />
+  <link rel="preconnect" href="https://cdn.jsdelivr.net"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Fin<span class="accent">vestimento</span></h1>
+    <nav>
+      <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+      <button class="tab-btn" data-tab="transacoes">Transações</button>
+      <button class="tab-btn" data-tab="impostos">Impostos</button>
+      <button class="tab-btn" data-tab="simulador">Simulador</button>
+      <button class="tab-btn" data-tab="importar">Importar</button>
+      <button class="tab-btn" data-tab="config">Config.</button>
+      <button id="btnRefreshAll" title="Atualizar tudo" class="secondary">Atualizar Tudo</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- Dashboard -->
+    <section id="dashboard" class="tab active">
+      <div class="cards">
+        <div class="card"><h3>Patrimônio Total</h3><div id="patrimonioTotal">R$ 0,00</div></div>
+        <div class="card"><h3>Variação no mês</h3><div id="variacaoMes">0,00%</div></div>
+        <div class="card"><h3>IR a pagar (mês)</h3><div id="irMes">R$ 0,00</div></div>
+      </div>
+      <canvas id="chartPatrimonio" height="80"></canvas>
+      <div class="tips"><p><strong>Dica:</strong> atualize os preços atuais dos ativos em <em>Config.</em></p></div>
+    </section>
+
+    <!-- Transações -->
+    <section id="transacoes" class="tab">
+      <h2>Lançamentos</h2>
+      <form id="formTransacao" class="grid">
+        <label>Data<input type="date" name="data" required /></label>
+        <label>Tipo
+          <select name="tipo" required>
+            <option value="compra">Compra</option>
+            <option value="venda">Venda</option>
+            <option value="aporte">Aporte (caixa)</option>
+            <option value="resgate">Resgate (caixa)</option>
+            <option value="rendimento">Rendimento/Dividendo</option>
+          </select>
+        </label>
+        <label>Categoria
+          <select name="categoria" required>
+            <option value="acoes">Ações (à vista)</option>
+            <option value="daytrade">Day Trade</option>
+            <option value="fii">FII/FIAGRO</option>
+            <option value="etf">ETF (ações)</option>
+            <option value="rf_titulo">Renda Fixa (CDB/Tesouro etc.)</option>
+          </select>
+        </label>
+        <label>Ticker/Produto
+          <div class="combo">
+            <input type="text" name="ticker" id="tickerInput" placeholder="ex: PETR4, VALE3" autocomplete="off" required />
+            <div id="tickerSuggest" class="suggest hidden"></div>
+            <button type="button" id="btnQuoteNow" class="ghost" title="Cotar agora">↺ Cotar</button>
+          </div>
+        </label>
+        <label>Quantidade<input type="number" name="quantidade" step="0.0001" value="0" /></label>
+        <label>Preço unitário (R$)<input type="number" name="preco" step="0.0001" value="0" /></label>
+        <label>Taxas (R$)<input type="number" name="taxas" step="0.01" value="0" /></label>
+        <label>Obs.<input type="text" name="obs" /></label>
+        <button type="submit" class="primary">Adicionar</button>
+      </form>
+      <div class="table-wrap"><table id="tblTransacoes"><thead><tr><th>Data</th><th>Tipo</th><th>Categoria</th><th>Ticker</th><th>Qtd</th><th>Preço</th><th>Taxas</th><th>Total</th><th></th></tr></thead><tbody></tbody></table></div>
+    </section>
+
+    <!-- Impostos -->
+    <section id="impostos" class="tab">
+      <h2>Cálculo de Impostos</h2>
+      <div class="grid"><label>Mês/Ano<input type="month" id="mesAno" /></label><button id="btnCalcular" class="primary">Calcular</button></div>
+      <div id="resultadoImpostos" class="result"></div>
+      <details class="notes"><summary>Regras consideradas (2025)</summary>
+        <ul>
+          <li>Ações (operações comuns): isenção se vendas ≤ R$ 20.000,00 no mês; acima disso, 15% sobre o lucro. IRRF 0,005% nas vendas. ETFs não têm isenção. Day trade sempre 20% e IRRF de 1%.</li>
+          <li>FIIs/FIAGRO: ganho de capital 20%; rendimentos isentos em 2025.</li>
+          <li>Renda Fixa: IR tabela regressiva (22,5%→15%). IOF regressivo até 30 dias em resgates.</li>
+          <li>Fundos (RF/MM): come‑cotas em maio e novembro — 15% (LP) ou 20% (CP).</li>
+        </ul>
+      </details>
+    </section>
+
+    <!-- Simulador -->
+    <section id="simulador" class="tab">
+      <h2>Simulador de Investimentos</h2>
+      <div class="grid">
+        <label>Produto
+          <select id="simProduto">
+            <option value="cdb">CDB/Tesouro Prefixado</option>
+            <option value="tesouro_selic">Tesouro Selic</option>
+            <option value="lci_lca">LCI/LCA (isentos)</option>
+            <option value="fii">FII (dividendos mensais)</option>
+            <option value="acoes">Ações (retorno anual esperado)</option>
+            <option value="ipca">Tesouro IPCA+</option>
+            <option value="deb_inc">Debêntures Incentivadas</option>
+            <option value="cri_cra">CRI/CRA (isentos)</option>
+            <option value="ipca_cupom">Tesouro IPCA+ (Juros Semestrais)</option>
+            <option value="deb_nao_inc">Debêntures não-incentivadas</option>
+            <option value="etf_rf">ETF de Renda Fixa</option>
+          </select>
+        </label>
+        <label>Aplicação inicial (R$)<input type="number" id="simAporte" value="10000" step="0.01" /></label>
+        <label>Prazo (meses)<input type="number" id="simPrazo" value="12" /></label>
+        <label>Taxa/Retorno (% a.a. ou %CDI)<input type="number" id="simTaxa" value="12" step="0.01" /></label>
+        <button id="btnSimular" class="primary">Simular</button>
+      </div>
+      <div id="simResultado" class="result"></div>
+
+      <details class="notes"><summary>Parâmetros avançados (opcional)</summary>
+        <div class="grid">
+          <label>Inflação esperada (% a.a.)
+            <input type="number" id="simInflacao" value="4.00" step="0.01" />
+          </label>
+          <label>Alíquota IR ETF RF (15, 20 ou 25)
+            <input type="number" id="simAliqETFRF" value="15" step="5" />
+          </label>
+          <label>Reinvestimento de cupons (% a.a.)
+            <input type="number" id="simReinv" value="10.00" step="0.01" />
+          </label>
+        </div>
+        <p class="muted">Para ETFs de RF, a alíquota de IR depende do <em>prazo médio da carteira</em>, não do seu tempo de posse. Use 25% (carteiras curtas), 20% (média) ou 15% (longa). Sem come‑cotas.</p>
+      </details>
+    </section>
+
+    <!-- Importar (Clear) -->
+    <section id="importar" class="tab">
+      <h2>Importação (Clear) — CSV/XLSX</h2>
+      <p>Selecione o arquivo exportado da sua corretora Clear (ex.: <em>Negociações</em> ou <em>Notas</em>). O importador reconhece colunas automaticamente.</p>
+      <div class="grid">
+        <input type="file" id="fileClear" accept=".csv, .xlsx, .xls, text/csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" />
+        <button id="btnImportClear" class="primary">Processar arquivo</button>
+      </div>
+      <div class="table-wrap"><table id="previewClear"><thead></thead><tbody></tbody></table></div>
+      <div class="grid"><button id="btnAplicarImport" class="secondary">Aplicar importação → Transações</button></div>
+    </section>
+
+    <!-- Configurações -->
+    <section id="config" class="tab">
+      <h2>Configurações</h2>
+      <div class="grid">
+        <label>Preço atual (JSON: {"TICKER": preço})<textarea id="precosAtuais" rows="6" placeholder='{"PETR4": 40.2, "HGLG11": 165.5}'></textarea></label>
+        <button id="btnSalvarPrecos" class="secondary">Salvar preços</button>
+      </div>
+
+      <div class="grid">
+        <label>Token brapi.dev (opcional – use proxy em produção)
+          <input type="password" id="cfgBrapiToken" placeholder="Seu token da brapi.dev" />
+        </label>
+        <label>Proxy de cotações (opcional)
+          <input type="url" id="cfgQuotesProxy" placeholder="https://seu-dominio.com/api/quote" />
+        </label>
+        <button id="btnSalvarAPIs" class="secondary">Salvar APIs</button>
+      </div>
+
+      <div class="grid">
+        <button id="btnExportar" class="secondary">Exportar dados (.json)</button>
+        <input type="file" id="fileImport" accept="application/json" />
+        <button id="btnImportar" class="secondary">Importar</button>
+        <button id="btnDemo" class="ghost">Carregar dados de demonstração</button>
+      </div>
+      <p class="muted">Dados ficam apenas no seu navegador (LocalStorage).</p>
+    </section>
+  </main>
+
+  <footer><small>Finvestimento — v1.3 | Este app não substitui orientação contábil. Verifique regras vigentes antes de recolher impostos.</small></footer>
+
+  <script src="assets/tax.js"></script>
+  <script src="assets/simulators.js"></script>
+  <script src="assets/app.js"></script>
+  <script src="assets/clear_importer.js"></script>
+  <script src="assets/quotes.js"></script>
+</body>
+</html>
